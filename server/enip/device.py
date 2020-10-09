@@ -341,19 +341,6 @@ def parse_path_component( path, elm=None, cnt=None ):
         path,cnt		= path.split( '*', 1 )
         cnt			= parse_int( cnt )
 
-    if '[' in path:
-        path,elm		= path.split( '[', 1 )
-        elm,rem			= elm.split( ']' )
-        assert not rem, "Garbage after [...]: %r" % ( rem )
-        lst			= None
-        if '-' in elm:
-            elm,lst		= elm.split( '-' )
-            lst			= int( lst )
-        elm			= int( elm )
-        if lst is not None:
-            cnt			= lst + 1 - elm
-            assert cnt > 0, "Invalid element range %d-%d" % ( elm, lst )
-
     segments			= []
     if path.startswith( '@' ):
         # Numeric and/or JSON. @<class>/<instance>/<attribute>/<element> (up to 4 segments)
