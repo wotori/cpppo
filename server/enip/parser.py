@@ -370,8 +370,6 @@ class STRING( STRUCT ):
         result		       += encoded[:value.length]
         if actual < value.length:
             result	       += b'\x00' * ( value.length - actual )
-        if value.length % 2:
-            result	       += b'\x00' # pad, if length is odd
         return result
 
 
