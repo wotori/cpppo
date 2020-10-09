@@ -167,6 +167,7 @@ CIP_TYPES			= {
     'SSTRING':	(parser.SSTRING.tag_type, 0,				str ),
     'BOOL':	(parser.BOOL.tag_type,	parser.BOOL.struct_calcsize,	bool_validate ),
     'REAL': 	(parser.REAL.tag_type,	parser.REAL.struct_calcsize,	float ),
+    'LREAL': 	(parser.LREAL.tag_type,	parser.LREAL.struct_calcsize,	float ),
     'DINT':	(parser.DINT.tag_type,	parser.DINT.struct_calcsize,	lambda x: int_validate( x, -2**31, 2**32-1 )), # extra range
     'UDINT':	(parser.UDINT.tag_type,	parser.UDINT.struct_calcsize,	lambda x: int_validate( x,  0,     2**32-1 )),
     'INT':	(parser.INT.tag_type,	parser.INT.struct_calcsize,	lambda x: int_validate( x, -2**15, 2**16-1 )), # extra range

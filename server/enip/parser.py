@@ -224,6 +224,12 @@ class REAL( TYPE ):
     struct_format		= '<f'
     struct_calcsize		= struct.calcsize( struct_format )
 
+class LREAL( TYPE ):
+    """An EtherNet/IP INT; 64-bit double"""
+    tag_type			= 0x00cb # 203
+    struct_format		= '<d'
+    struct_calcsize		= struct.calcsize( struct_format )
+
 # Some network byte-order types that are occasionally used in parsing
 class UINT_network( TYPE ):
     """An EtherNet/IP UINT; 16-bit unsigned integer, but in network byte order"""
@@ -1712,6 +1718,7 @@ class typed_data( cpppo.dfa ):
     INT		yes		= 0x00c3	# 2 bytes
     DINT	yes		= 0x00c4	# 4 bytes
     REAL	yes		= 0x00ca	# 4 bytes
+    LREAL	yes		= 0x00cb	# 8 bytes  (!!! python side - float)
     USINT	yes		= 0x00c6	# 1 byte
     UINT	yes		= 0x00c7	# 2 bytes
     WORD			= 0x00d2	# 2 byte (16-bit boolean array)
@@ -1731,6 +1738,7 @@ class typed_data( cpppo.dfa ):
         DINT.tag_type:		DINT,
         UDINT.tag_type:		UDINT,
         REAL.tag_type:		REAL,
+        LREAL.tag_type:		LREAL,
         SSTRING.tag_type:	SSTRING,
         STRING.tag_type:	STRING,
     }
@@ -1796,6 +1804,14 @@ class typed_data( cpppo.dfa ):
         fltp[None]		= move_if( 	'movfloat',	source='.REAL', 
                                            destination='.data',	initializer=lambda **kwds: [],
                                                 state=fltd )
+
+        dbld			= octets_noop(	'enddouble',
+                                                terminal=True )
+        dbld[True]	= dblp	= LREAL()
+        dblp[None]		= move_if( 	'movdouble',	source='.LREAL',
+                                           destination='.data',	initializer=lambda **kwds: [],
+                                                state=dbld )
+
         # Since a parsed "[S]STRING": { "string": "abc", "length": 3 } is multiple layers deep, and we
         # want to completely eliminate the target container in preparation for the next loop, we'll
         # need to move it up one layer, and then into the final target.
@@ -1841,6 +1857,9 @@ class typed_data( cpppo.dfa ):
         slct[None]		= cpppo.decide(	'REAL',	state=fltd,
             predicate=lambda path=None, data=None, **kwds: \
                 REAL.tag_type == ( data[path+tag_type] if isinstance( tag_type, cpppo.type_str_base ) else tag_type ))
+        slct[None]		= cpppo.decide(	'LREAL',	state=dbld,
+            predicate=lambda path=None, data=None, **kwds: \
+                LREAL.tag_type == ( data[path+tag_type] if isinstance( tag_type, cpppo.type_str_base ) else tag_type ))
         slct[None]		= cpppo.decide(	'SSTRING', state=sstd,
             predicate=lambda path=None, data=None, **kwds: \
                 SSTRING.tag_type == ( data[path+tag_type] if isinstance( tag_type, cpppo.type_str_base ) else tag_type ))
