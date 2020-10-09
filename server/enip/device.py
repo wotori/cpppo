@@ -321,7 +321,7 @@ def parse_path_elements( path, elm=None, cnt=None ):
         return path,None,None
 
     segments			= []
-    p				= path.split( '.' )
+    p				= path.split( '|' )
     while len( p ) > 1:
         s,e,c			= parse_path_component( p.pop( 0 ))
         assert c in (None,1), "Only final path segment may specify multiple elements: %r" % ( path )
