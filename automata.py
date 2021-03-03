@@ -649,8 +649,9 @@ class state( dict ):
         seen			= set()
         while not self.accepts( source=source, machine=machine, path=path, data=data ):
             crumb		= (None,source.peek(),source.sent)
-            assert crumb not in seen, \
-                "%s detected no progress before finding acceptable symbol" % ( self )
+            # TODO: removed for OMRON
+            # assert crumb not in seen, \ 
+            #     "%s detected no progress before finding acceptable symbol" % ( self )
             seen.add( crumb )
             yield machine,None
 

@@ -321,7 +321,8 @@ def parse_path_elements( path, elm=None, cnt=None ):
         return path,None,None
 
     segments			= []
-    p				= path.split( '.' )
+    # p				= path.split( '.' )
+    p				= path.split( '|' )  # TODO: removed for OMRON
     while len( p ) > 1:
         s,e,c			= parse_path_component( p.pop( 0 ))
         assert c in (None,1), "Only final path segment may specify multiple elements: %r" % ( path )
@@ -341,18 +342,19 @@ def parse_path_component( path, elm=None, cnt=None ):
         path,cnt		= path.split( '*', 1 )
         cnt			= parse_int( cnt )
 
-    if '[' in path:
-        path,elm		= path.split( '[', 1 )
-        elm,rem			= elm.split( ']' )
-        assert not rem, "Garbage after [...]: %r" % ( rem )
-        lst			= None
-        if '-' in elm:
-            elm,lst		= elm.split( '-' )
-            lst			= int( lst )
-        elm			= int( elm )
-        if lst is not None:
-            cnt			= lst + 1 - elm
-            assert cnt > 0, "Invalid element range %d-%d" % ( elm, lst )
+    # TODO: removed for OMRON
+    # if '[' in path:
+    #     path,elm		= path.split( '[', 1 )
+    #     elm,rem			= elm.split( ']' )
+    #     assert not rem, "Garbage after [...]: %r" % ( rem )
+    #     lst			= None
+    #     if '-' in elm:
+    #         elm,lst		= elm.split( '-' )
+    #         lst			= int( lst )
+    #     elm			= int( elm )
+    #     if lst is not None:
+    #         cnt			= lst + 1 - elm
+    #         assert cnt > 0, "Invalid element range %d-%d" % ( elm, lst )
 
     segments			= []
     if path.startswith( '@' ):
