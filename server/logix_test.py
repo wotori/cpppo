@@ -9,6 +9,11 @@ import sys
 import threading
 import time
 
+try:
+    import reprlib
+except ImportError:
+    import repr as reprlib
+
 has_pylogix			= False
 try:
     import pylogix
@@ -30,6 +35,7 @@ if __name__ == "__main__":
 import cpppo
 from   cpppo.server import enip
 from   cpppo.server.enip import logix, client
+from   cpppo.server.enip.main import main as enip_main
 
 log				= logging.getLogger( "enip.lgx" )
 
@@ -143,13 +149,18 @@ def test_logix_multiple():
     Obj_a4 = Obj.attribute['4']	= enip.device.Attribute( 'number',      enip.parser.REAL, default=0.0)
 
     # Set up a symbolic tag referencing the Logix Object's Attribute
-    enip.device.symbol['parts']	= {'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':1 }
-    enip.device.symbol['ControlWord'] \
-				= {'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':2 }
-    enip.device.symbol['SCADA_40001'] \
-				= {'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':3 }
-    enip.device.symbol['number'] \
-				= {'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':4 }
+    enip.device.redirect_tag( 'parts', {
+        'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':1
+    })
+    enip.device.redirect_tag( 'ControlWord', {
+        'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':2
+    })
+    enip.device.redirect_tag('SCADA_40001', {
+	'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':3
+    })
+    enip.device.redirect_tag( 'number', {
+	'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':4
+    })
 
 
     assert len( Obj_a1 ) == size
@@ -193,7 +204,7 @@ def test_logix_multiple():
             description, encoded, response )
 
 
-    # Test that we correctly compute beg,end,endactual for various Read Tag Fragmented scenarios,
+    # Test that we correctly compute beg,end,endact for various Read Tag Fragmented scenarios,
     # with 2-byte and 4-byte types.  For the purposes of this test, we only look at path...elements.
     data			= cpppo.dotdict()
     data.service		= Obj.RD_FRG_RPY
@@ -204,28 +215,29 @@ def test_logix_multiple():
     data.read_frag		= {}
     data.read_frag.elements	= 1000
     data.read_frag.offset	= 0
+    data.read_frag.max_size	= 500
     
     # Reply maximum size limited
-    beg,end,endactual		= Obj.reply_elements( Obj_a1, data, 'read_frag' )
-    assert beg == 0 and end == 125 and endactual == 1000 # DINT == 4 bytes
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'read_frag' )
-    assert beg == 0 and end == 250 and endactual == 1000 # INT == 2 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a1, data, 'read_frag' )
+    assert beg == 0 and end == 125 and endact == 1000 and offrem == 0 and maxsiz == 500 # DINT == 4 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+    assert beg == 0 and end == 250 and endact == 1000 and offrem == 0 and maxsiz == 500 # INT == 2 bytes
 
     data.read_frag.offset	= 125*4 # OK, second request; begin after byte offset of first
-    beg,end,endactual		= Obj.reply_elements( Obj_a1, data, 'read_frag' )
-    assert beg == 125 and end == 250 and endactual == 1000 # DINT == 4 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a1, data, 'read_frag' )
+    assert beg == 125 and end == 250 and endact == 1000 and offrem == 0 and maxsiz == 500 # DINT == 4 bytes
 
     # Request elements limited; 0 offset
     data.read_frag.elements	= 30
     data.read_frag.offset	= 0
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'read_frag' )
-    assert beg == 0 and end == 30 and endactual == 30 # INT == 2 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+    assert beg == 0 and end == 30 and endact == 30 and offrem == 0 and maxsiz == 500 # INT == 2 bytes
 
     # Request elements limited; +'ve offset
     data.read_frag.elements	= 70
     data.read_frag.offset	= 80
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'read_frag' )
-    assert beg == 40 and end == 70 and endactual == 70 # INT == 2 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+    assert beg == 40 and end == 70 and endact == 70 and offrem == 0 and maxsiz == 500 # INT == 2 bytes
 
     # Request limited by size of data provided (Write Tag [Fragmented])
     data			= cpppo.dotdict()
@@ -238,16 +250,16 @@ def test_logix_multiple():
     data.write_frag.data	= [0] * 100 # 100 elements provided in this request
     data.write_frag.elements	= 200       # Total request is to write 200 elements
     data.write_frag.offset	= 16        # request starts 16 bytes in (8 INTs)
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'write_frag' )
-    assert beg == 8 and end == 108 and endactual == 200 # INT == 2 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'write_frag' )
+    assert beg == 8 and end == 108 and endact == 200 # INT == 2 bytes
 
     # ... same, but lets say request started somewhere in the middle of the array
     data.path			= { 'segment': [ cpppo.dotdict( d )
                                                  for d in [
                                                          {'element': 222 },
                                                        ]] }
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'write_frag' )
-    assert beg == 8+222 and end == 108+222 and endactual == 200+222 # INT == 2 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'write_frag' )
+    assert beg == 8+222 and end == 108+222 and endact == 200+222 # INT == 2 bytes
 
     # Ensure correct computation of (beg,end] that are byte-offset and data/size limited
     data			= cpppo.dotdict()
@@ -257,15 +269,15 @@ def test_logix_multiple():
     data.write_frag		= {}
     data.write_frag.data	= [3,4,5,6]
     data.write_frag.offset	= 6
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'write_frag' )
-    assert beg == 3 and end == 7 and endactual == 1000 # INT == 2 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'write_frag' )
+    assert beg == 3 and end == 7 and endact == 1000 # INT == 2 bytes
 
     # Trigger the error cases only accessible via write
 
     # Too many elements provided for attribute capacity
     data.write_frag.offset	= ( 1000 - 3 ) * 2
     try:
-        beg,end,endactual	= Obj.reply_elements( Obj_a3, data, 'write_frag' )
+        beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'write_frag' )
         assert False, "Should have raised Exception due to capacity"
     except Exception as exc:
         assert "capacity exceeded" in str( exc )
@@ -276,13 +288,14 @@ def test_logix_multiple():
 
     data.read_frag		= {}
     data.read_frag.offset	= 6
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'read_frag' )
-    assert beg == 3 and end == 253 and endactual == 1000 # INT == 2 bytes
+    data.read_frag.max_size	= 500
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+    assert beg == 3 and end == 253 and endact == 1000 # INT == 2 bytes
 
     # And we should be able to read with an offset right up to the last element
     data.read_frag.offset	= 1998
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'read_frag' )
-    assert beg == 999 and end == 1000 and endactual == 1000 # INT == 2 bytes
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+    assert beg == 999 and end == 1000 and endact == 1000 # INT == 2 bytes
 
 
     # Trigger all the remaining error cases
@@ -290,7 +303,7 @@ def test_logix_multiple():
     # Unknown service
     data.service		= Obj.RD_FRG_REQ
     try:
-        beg,end,endactual	= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+        beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
         assert False, "Should have raised Exception due to service"
     except Exception as exc:
         assert "unknown service" in str( exc )
@@ -298,16 +311,13 @@ def test_logix_multiple():
     # Offset indivisible by element size
     data.service		= Obj.RD_FRG_RPY
     data.read_frag.offset	= 7
-    try:
-        beg,end,endactual	= Obj.reply_elements( Obj_a3, data, 'read_frag' )
-        assert False, "Should have raised Exception due to odd byte offset"
-    except Exception as exc:
-        assert "element boundary" in str( exc )
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+    assert beg == 3 and end == 254 and endact == 1000 and offrem == 1 and maxsiz == 500
 
     # Initial element outside bounds
     data.read_frag.offset	= 2000
     try:
-        beg,end,endactual	= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+        beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
         assert False, "Should have raised Exception due to initial element"
     except Exception as exc:
         assert "initial element invalid" in str( exc )
@@ -316,10 +326,10 @@ def test_logix_multiple():
     data.read_frag.offset	= 0
     data.read_frag.elements	= 1001
     try:
-        beg,end,endactual	= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+        beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
         assert False, "Should have raised Exception due to ending element"
     except Exception as exc:
-        assert "ending element invalid" in str( exc )
+        assert "elements requested invalid" in str( exc )
 
     # Beginning element after ending (should be no way to trigger).  This request doesn't specify an
     # element in the path, hence defaults to element 0, and asks for a number of elements == 2.
@@ -327,15 +337,14 @@ def test_logix_multiple():
     data.read_frag.offset	= 6
     data.read_frag.elements	= 2
     try:
-        beg,end,endactual	= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+        beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
         assert False, "Should have raised Exception due to ending element order"
     except Exception as exc:
         assert "ending element before beginning" in str( exc )
     data.read_frag.offset	= 2
     data.read_frag.elements	= 2
-    beg,end,endactual		= Obj.reply_elements( Obj_a3, data, 'read_frag' )
-    assert beg == 1 and end == 2 and endactual == 2 # INT == 2 bytes
-
+    beg,end,endact,offrem,maxsiz= Obj.reply_elements( Obj_a3, data, 'read_frag' )
+    assert beg == 1 and end == 2 and endact == 2 # INT == 2 bytes
 
     # Test an example valid multiple request
     data			= cpppo.dotdict()
@@ -627,7 +636,9 @@ def logix_performance( repeat=1000 ):
     assert len( Obj_a1 ) == size
 
     # Set up a symbolic tag referencing the Logix Object's Attribute
-    enip.device.symbol['SCADA']	= {'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':1 }
+    enip.device.redirect_tag( 'SCADA', {
+        'class': Obj.class_id, 'instance': Obj.instance_id, 'attribute':1
+    })
 
     # Lets get it to parse a request, resulting in a 200 element response:
     #     'service': 			0x52,
@@ -712,13 +723,15 @@ def test_logix_remote_cpppo( count=100 ):
 
     log.normal( "test_logix_remote_cpppo w/ server.control in object %s", id( kwargs['server']['control'] ))
     # This is sort of "inside-out".  This thread will run logix_remote_cpppo, which will signal the
-    # enip.main (via the kwargs.server...) to shut down.  However, to do line-based performance
+    # enip_main (via the kwargs.server...) to shut down.  However, to do line-based performance
     # measurement, we need to be running enip.main in the "Main" thread...
     logixthread			= threading.Thread( target=logix_remote_cpppo, kwargs=logixthread_kwargs )
     logixthread.daemon		= True
     logixthread.start()
-
-    enip.main( **kwargs )
+    try:
+        enip_main( **kwargs )
+    finally:
+        kwargs['server']['control'].done= True # Signal the server to terminate
 
     logixthread.join()
 
@@ -791,7 +804,7 @@ def test_logix_remote_pylogix( count=100 ):
     """
     #logging.getLogger().setLevel( logging.NORMAL )
     enip.lookup_reset() # Flush out any existing CIP Objects for a fresh start
-    svraddr		        = ('localhost', 44818)
+    svraddr		        = ('localhost', 44828)
     kwargs			= {
         'argv': [
             #'-v',
@@ -814,15 +827,19 @@ def test_logix_remote_pylogix( count=100 ):
 
     log.normal( "test_logix_remote_pylogix w/ server.control in object %s", id( kwargs['server']['control'] ))
     # This is sort of "inside-out".  This thread will run logix_remote, which will signal the
-    # enip.main (via the kwargs.server...) to shut down.  However, to do line-based performance
+    # enip_main (via the kwargs.server...) to shut down.  However, to do line-based performance
     # measurement, we need to be running enip.main in the "Main" thread...
     logixthread			= threading.Thread( target=logix_remote_pylogix, kwargs=logixthread_kwargs )
     logixthread.daemon		= True
     logixthread.start()
 
-    enip.main( **kwargs )
+    try:
+        enip_main( **kwargs )
+    finally:
+        kwargs['server']['control'].done = True # Signal the server to terminate
 
     logixthread.join()
+    log.normal( "Shutdown of server complete" )
 
 
 def logix_remote_pylogix( count, svraddr, kwargs ):
@@ -834,8 +851,10 @@ def logix_remote_pylogix( count, svraddr, kwargs ):
 
     with pylogix.PLC() as comm:
         comm.SocketTimeout	= timeout
-        comm.IPAddress		= enip.address[0]
+        comm.IPAddress		= svraddr[0]
         comm.ConnectionSize	= 4000
+
+        comm.conn.Port		= int( svraddr[1] )
 
         # CIP Register, Forward Open
         start			= cpppo.timer()
@@ -850,7 +869,7 @@ def logix_remote_pylogix( count, svraddr, kwargs ):
             reply		= comm.Read( 'SCADA[12]', 201 )
             elapsed		= cpppo.timer() - start
             data		= reply.Value
-            log.detail( "Client ReadFrg. Rcvd %7.3f/%7.3fs: %r", elapsed, timeout, data )
+            log.detail( "Client ReadFrg. Rcvd %7.3f/%7.3fs: %s", elapsed, timeout, reprlib.repr( data ))
 
         duration		= cpppo.timer() - start
         log.warning( "Client ReadFrg. Average %7.3f TPS (%7.3fs ea)." % ( count / duration, duration / count ))
@@ -858,6 +877,7 @@ def logix_remote_pylogix( count, svraddr, kwargs ):
     log.normal( "Signal shutdown w/ server.control in object %s", id( kwargs['server']['control'] ))
   finally:
     kwargs['server']['control'].done= True # Signal the server to terminate
+    log.normal( "Signalling shutdown server complete" )
 
 
 if __name__ == "__main__":
