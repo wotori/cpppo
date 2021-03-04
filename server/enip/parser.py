@@ -203,7 +203,8 @@ class BOOL( TYPE ):
     def produce( cls, value ):
         """Historically, a 0xFF has been used to represent an EtherNet/IP CIP BOOL Truthy value."""
         encoding		= super( BOOL, cls ).produce( value )
-        return encoding if encoding == b'\x00' else b'\xff'
+        # return encoding if encoding == b'\x00' else b'\xff' # TODO: OMRON
+        return encoding if encoding == b'\x00\x00' else b'\xff\xff'
 
 class USINT( TYPE ):
     """An EtherNet/IP USINT; 8-bit unsigned integer"""
